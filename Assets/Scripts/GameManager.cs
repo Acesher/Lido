@@ -9,7 +9,7 @@ public class GameManager : MonoBehaviour {
 
     private void Awake()
     {
-        if(instance != null)
+        if (instance != null)
         {
             Debug.LogError("More than one GameManager in the scene");
         }
@@ -53,9 +53,13 @@ public class GameManager : MonoBehaviour {
 
     public List<Player> players = new List<Player>();
     public Player currentPlayer;
+    private int[] turnCounter = { 0, 0, 0, 0 }; //Turn manager, gaining a turn || lost a turn;
+
+    private static List<Token> roamingTokens; 
 
     public bool waitingForRoll = true;
     public DiceCube dice;
+    public DiceLucky luckyDice;
 
     public WinningUI winningUI;
     public GameObject gameOverUI;
@@ -91,11 +95,25 @@ public class GameManager : MonoBehaviour {
 
     public void BeginTurn()
     {
+        LuckyDiceChecker();
+
+        switch (turnCounter[CurrentPlayerIndex])
+        {
+            case 2:
+                turnCounter[CurrentPlayerIndex]--;
+                break;
+            case 1:
+                GetNextPlayer();
+                //StartCoroutine(dice.Roll());
+                //StartCoroutine(luckyDice.Roll());
+                return;
+        }
+
         int interactablesNumber = 0;
         Node nextNode;
         foreach (Token token in currentPlayer.tokens)
         {
-            if (token.tokenStatus == TokenStatus.LOCKED_IN_SPAWN && dice.value == 6)
+            if (token.tokenStatus == TokenStatus.LOCKED_IN_SPAWN && (dice.value == 6 || dice.value == 1))
             {
                 token.originalSpawnNodeComponent.interactable = true;
                 token.tokenTransform.GetChild(0).gameObject.SetActive(true);
@@ -123,23 +141,25 @@ public class GameManager : MonoBehaviour {
             }
         }
 
+        Debug.Log("Turn: " + turnCounter[CurrentPlayerIndex]);
+
         if (interactablesNumber == 0)
         {
             currentPlayer = GetNextPlayer();
             waitingForRoll = true;
         }
         
-        if(interactablesNumber == 1)
+        if (interactablesNumber == 1)
         {
             foreach (Token token in currentPlayer.tokens)
             {
-                if(token.tokenStatus == TokenStatus.LOCKED_IN_SPAWN && dice.value == 6)
+                if (token.tokenStatus == TokenStatus.LOCKED_IN_SPAWN && (dice.value == 6 || dice.value == 1))
                 {
                     StartCoroutine(PlayWithChosenToken(token));
                     break;
                 }
-                if(token.tokenStatus == TokenStatus.FREE_TO_MOVE)
-                    if(token.GetParentNodeComponent().interactable == true)
+                if (token.tokenStatus == TokenStatus.FREE_TO_MOVE)
+                    if (token.GetParentNodeComponent().interactable == true)
                     {
                         StartCoroutine(PlayWithChosenToken(token));
                         break;
@@ -147,7 +167,70 @@ public class GameManager : MonoBehaviour {
             }
         }
 
+        /*if (turnCounter[CurrentPlayerIndex] == -1)
+        {
+            StartCoroutine(dice.Roll());
+            StartCoroutine(luckyDice.Roll());
+        }*/
     }
+
+    //Check luck dice value
+    public void LuckyDiceChecker()
+    {
+        //Debug.Log("Luck: " + luckyDice.value + " Normal: " + dice.value);
+        switch (luckyDice.value)
+        {
+            case 1:
+                AllOfYouOneStepForward(); //Two steps back
+                break;
+            case 2:
+                DoublePoints();
+                break;
+            case 3:
+                CrossTokenAndReverse(); //Check diagonal player's token and go back 3 moves
+                break;
+            case 4:
+                BonusTurn();
+                break;
+            case 5:
+                break;
+            case 6:
+                CurrentPlayerLoseNextTurn();
+                break;
+        }
+    }
+
+    //----------------------------------------------//
+
+    private void AllOfYouOneStepForward() //1
+    {
+        if (roamingTokens == null)
+            return;
+
+        foreach (Token token in roamingTokens)
+        {
+            Alt_PlayWithChosenToken(token, 1);
+        }
+    }
+    private void DoublePoints() //2
+    {
+        dice.value *= 2;
+    }
+    private void CrossTokenAndReverse()
+    {
+
+    }
+    private void BonusTurn() //4
+    {
+        StartCoroutine(dice.Roll());
+        StartCoroutine(luckyDice.Roll());
+    }
+    private void CurrentPlayerLoseNextTurn() //6
+    {
+        turnCounter[CurrentPlayerIndex] = 2;
+    }
+
+    //----------------------------------------------//
 
     public IEnumerator PlayWithChosenToken(Token token)
     {
@@ -162,6 +245,7 @@ public class GameManager : MonoBehaviour {
             token.Spawn();
             token.GetParentNodeComponent().AddPlayer(token);
             waitingForRoll = true;
+            roamingTokens.Add(token);
         }
         else
         // The chosen token is free to move in this case.
@@ -253,7 +337,7 @@ public class GameManager : MonoBehaviour {
             }
 
             // Prepare for the next turn.
-            if (!(token.tokenStatus == TokenStatus.WON && !currentPlayer.HasWon() || dice.value == 6 || hasKilled))
+            if (!(token.tokenStatus == TokenStatus.WON && !currentPlayer.HasWon() || dice.value == 6 || dice.value == 1 || hasKilled))
             {
                 currentPlayer = GetNextPlayer();
             }
@@ -262,6 +346,14 @@ public class GameManager : MonoBehaviour {
         }
     }
     
+    public void Alt_PlayWithChosenToken(Token token, int value) //Temporarily replaces dice value with custom value
+    {
+        int temp = dice.value;
+        dice.value = value;
+        StartCoroutine(PlayWithChosenToken(token));
+        dice.value = temp;
+    }
+
     IEnumerator KillOpponent(Token opponentToken)
     {
         // Instanciate death effect
@@ -284,6 +376,9 @@ public class GameManager : MonoBehaviour {
         Destroy(deathEffect, 3f);
         opponentToken.tokenTransform.GetComponent<MeshRenderer>().enabled = false;
         opponentToken.Despawn();
+
+        roamingTokens.Remove(opponentToken);
+
         yield return new WaitForSeconds(1f);
         opponentToken.tokenTransform.localScale = opponentToken.originalScale;
         opponentToken.tokenTransform.GetComponent<MeshRenderer>().enabled = true;
@@ -338,7 +433,7 @@ public class GameManager : MonoBehaviour {
         {
             case 2:
                 players.Add(SetupPlayer(PlayerType.BLUE, blueTokenPrefab, blueSpawnNodesTransforms));
-                players.Add(SetupPlayer(PlayerType.GREEN, greenTokenPrefab, greenSpawnNodesTransforms));
+                players.Add(SetupPlayer(PlayerType.RED, redTokenPrefab, redSpawnNodesTransforms));
                 break;
             case 3:
                 players.Add(SetupPlayer(PlayerType.BLUE, blueTokenPrefab, blueSpawnNodesTransforms));

@@ -18,6 +18,9 @@ public class DiceCube : MonoBehaviour {
 
     public IEnumerator Roll()
     {
+        if (gm == null)
+            gm = GameManager.instance;
+
         int randomValue = value;
         isRolling = true;
         gm.waitingForRoll = false;

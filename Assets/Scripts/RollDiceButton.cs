@@ -8,6 +8,7 @@ public class RollDiceButton : MonoBehaviour {
     public bool isInteractive;
     public PlayerType playerType;
     public DiceCube diceCube;
+    public DiceLucky luckyDice;
     private GameManager gm;
 
     private void Start()
@@ -34,7 +35,9 @@ public class RollDiceButton : MonoBehaviour {
         if(isInteractive == true)
         {
             transform.position = transform.position + Vector3.up * 0.3f;
+            luckyDice.StartCoroutine(luckyDice.Roll());
             diceCube.StartCoroutine(diceCube.Roll());
+            
         }
     }
 
